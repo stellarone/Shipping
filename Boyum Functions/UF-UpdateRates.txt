@@ -1,0 +1,65 @@
+int rowIndex = 0;
+double rate;
+int docEntry;
+
+try
+{
+    SAPbouiCOM.Grid oGrid = null;
+    oGrid = (SAPbouiCOM.Grid)form.Items.Item("Types").Specific; 
+    rowIndex = oGrid.Rows.SelectedRows.Item(0, SAPbouiCOM.BoOrderType.ot_RowOrder);
+
+    // Do Cool Stuff here
+    // (0) - Desc // (1) - CalculatedRate // (3) - BaseFormtype // (4) - BaseEntry
+    // application.MessageBox(Convert.ToString(oGrid.DataTable.GetValue(0, rowIndex)));
+    rate = (double)(oGrid.DataTable.GetValue(1, rowIndex));
+    docEntry = (Convert.ToInt32(oGrid.DataTable.GetValue(4, rowIndex)));
+    string shipType = Convert.ToString(oGrid.DataTable.GetValue(5, rowIndex));
+    string desc = Convert.ToString(oGrid.DataTable.GetValue(0, rowIndex));
+    
+    if (Convert.ToString(oGrid.DataTable.GetValue(3, rowIndex)) == "139")
+    {
+        SAPbobsCOM.Documents oSales;
+        oSales = (SAPbobsCOM.Documents) company.GetBusinessObject(SAPbobsCOM.BoObjectTypes.oOrders);
+        oSales.GetByKey(docEntry);        
+        oSales.Expenses.ExpenseCode = 1;
+        oSales.Expenses.LineTotal = rate;
+        oSales.Expenses.Add();
+        oSales.UserFields.Fields.Item("U_S1C_Shp_CarrService").Value = shipType;
+        if( oSales.Update() != 0 )
+        {
+            application.MessageBox(company.GetLastErrorDescription());
+        }
+        else
+        {
+            application.MessageBox("Sales Order has been successfully updated using " + desc);
+        }
+    }
+    else
+    {
+        SAPbobsCOM.Documents oQuote;
+        oQuote = (SAPbobsCOM.Documents) company.GetBusinessObject(SAPbobsCOM.BoObjectTypes.oQuotations);
+        oQuote.GetByKey(docEntry);
+        oQuote.Expenses.ExpenseCode = 1;
+        oQuote.Expenses.LineTotal = rate;
+        oQuote.Expenses.Add();
+        oQuote.UserFields.Fields.Item("U_S1C_Shp_CarrService").Value = shipType;
+        if (oQuote.Update() != 0)
+        {
+            application.MessageBox(company.GetLastErrorDescription());
+        }
+        else
+        {
+            application.MessageBox("Sales Quotation has been successfully updated using " + desc);
+        }
+    }
+    
+    // End Kool Stuff
+
+    form.Close();
+    application.ActivateMenuItem("1304");
+}
+
+catch (Exception ex)
+{
+    application.MessageBox("No Row Selected");
+}

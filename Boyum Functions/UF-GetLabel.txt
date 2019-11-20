@@ -1,0 +1,163 @@
+SAPbouiCOM.DBDataSource HeaderDB;
+SAPbouiCOM.DBDataSource LinesDB;
+SAPbouiCOM.DBDataSource AddrDB;
+HeaderDB = form.DataSources.DBDataSources.Item("ODLN");
+LinesDB = form.DataSources.DBDataSources.Item("DLN1");
+AddrDB = form.DataSources.DBDataSources.Item("DLN12");
+
+SAPbobsCOM.Warehouses oWH = (Warehouses)company.GetBusinessObject(BoObjectTypes.oWarehouses);
+oWH.GetByKey(LinesDB.GetValue("WhsCode", 0));
+
+SAPbobsCOM.Documents oDLN = (Documents)company.GetBusinessObject(BoObjectTypes.oDeliveryNotes);
+oDLN.GetByKey(Convert.ToInt32(HeaderDB.GetValue("DocEntry", 0)));
+
+// Pull package info
+double weight = Convert.ToDouble(HeaderDB.GetValue("Weight",0));
+string shipService = "";
+
+// pull org var
+string orgName = oWH.WarehouseName;
+string orgLine1 = oWH.Street;
+string orgLine2 = oWH.Block;
+string orgCity = oWH.City;
+string orgState = oWH.State;
+string orgZip = oWH.ZipCode;
+string orgPhone = "1234567890";
+
+// pull dest var
+string toName = HeaderDB.GetValue("ShipToCode",0);
+string toLine1 = AddrDB.GetValue("StreetS", 0);
+string toLine2 = AddrDB.GetValue("BlockS", 0);
+string toCity = AddrDB.GetValue("CityS", 0);
+string toState = AddrDB.GetValue("StateS", 0);
+string toZip = AddrDB.GetValue("ZipCodeS", 0);
+string toPhone = "1234567890";
+
+var request = (HttpWebRequest)WebRequest.Create("https://api.rocketship.it/v1/");
+request.Method = "POST";
+request.PreAuthenticate = true;
+request.KeepAlive = true;
+request.ContentType = "application/json";
+request.Headers.Add("x-api-key", "sFuEf0TF1M5bVrIg3gnjs4vYJTOD6VVH3JAIVcAH");
+var JSON = "";
+
+/*
+JSON += "{\"carrier\": \"" + Car.Carrier + "\",  \"action\": \"SubmitShipment\", ";
+JSON += " \"params\": {";
+
+// Carrier Credentials 
+JSON += "\"account_number\": " + "\"" + Car.Account + "\"";
+JSON += ", \"key\": " + "\"" + Car.APIKey + "\"";
+if (Car.Meter.Length > 1)
+{
+    JSON += ", \"meter_number\": " + "\"" + Car.Meter + "\"";
+}
+if (Car.User.Length > 1)
+{
+    JSON += ", \"username\": " + "\"" + Car.User + "\"";
+}
+JSON += ", \"password\": " + "\"" + Car.Password + "\"";
+*/
+
+JSON += "{\"carrier\": \"" + "FEDEX" + "\",  \"action\": \"SubmitShipment\", ";
+JSON += " \"params\": {";
+
+// Carrier Credentials 
+JSON += "\"account_number\": " + "\"" + "510087100" + "\"";
+JSON += ", \"key\": " + "\"" + "jYnruZAs4Ts3eMih" + "\"";
+JSON += ", \"meter_number\": " + "\"" + "119126783" + "\"";
+JSON += ", \"password\": " + "\"" + "xyQpxVDe1zv7OtH4yfeSX67Ax" + "\"";
+
+//Package information
+JSON += ",\"weight_unit\": \"LB\"";
+//Optional Dimensions [...,"Width": val, "Height": val, "Len": val}...] ;
+JSON += ",\"packages\": [{\"weight\": ";
+JSON += (double)weight;
+JSON += "}]";
+
+//Origin information;
+JSON += ",\"shipper\": \"" + orgName + "\"";
+JSON += ",\"ship_addr1\": \"" + orgLine1 + "\"";
+if (orgLine2 != "")
+{
+    JSON += ",\"ship_addr2\": \"" + orgLine2 + "\"";
+}
+JSON += ",\"ship_city\": \"" + orgCity + "\"";
+JSON += ",\"ship_code\": " + "\"" + orgZip + "\"";
+JSON += ",\"ship_state\": " + "\"" + orgState + "\"";
+JSON += ",\"ship_country\": \"US\"";
+JSON += ",\"ship_phone\": " + "\"" + orgPhone + "\"";
+
+//Destination Information; 
+JSON += ",\"to_name\": " + "\"" + toName + "\"";
+JSON += ",\"to_addr1\": " + "\"" + toLine1 + "\"";
+if (orgLine2 != "")
+{
+    JSON += ",\"to_addr2\": \"" + toLine2 + "\"";
+}
+JSON += ",\"to_city\": " + "\"" + toCity + "\"";
+JSON += ",\"to_code\": " + "\"" + toZip + "\"";
+JSON += ",\"to_state\": " + "\"" + toState + "\"";
+JSON += ",\"to_country\": \"US\"";
+JSON += ",\"to_phone\": " + "\"" + toPhone + "\"";
+if (shipService != "")
+{
+    JSON += ",\"service\": " + "\"" + shipService + "\"";
+}
+JSON += ",\"image_type\": \"PDF\"";
+/*
+if (ReturnLabel)
+{
+    if (Car.Carrier == "UPS")
+    {
+    // JSON += ",\"return_code\": \"9\"";
+    }
+    if (Car.Carrier == "FedEx")
+    {
+        JSON += ",\"return_code\": \"PRINT_RETURN_LABEL\"";
+    }
+}*/
+//test is optional - if omitted defaults to false;
+JSON += ", \"test\": true";
+JSON += "}}";
+
+request.ContentLength = JSON.Length;
+                
+//Write API body for debugging
+application.MessageBox(JSON);
+                
+using (var streamWriter = new StreamWriter(request.GetRequestStream()))
+{
+    streamWriter.Write(JSON);
+}
+
+var response = (HttpWebResponse)request.GetResponse();
+var responseString = new StreamReader(response.GetResponseStream()).ReadToEnd();
+application.MessageBox(responseString);
+dynamic deserializedJSON = JsonConvert.DeserializeObject(responseString);
+                
+// Code 200 is a successful RocketShip.It Response
+if (deserializedJSON.meta.code != 200)
+{
+    Console.WriteLine("RocketShip.It Error: " + deserializedJSON.meta.error_message);
+}
+//Console.WriteLine(deserializedJSON.charges);
+//Console.WriteLine(deserializedJSON.tracking_number);
+//Console.WriteLine(deserializedJSON.billing_weight);
+
+//Create File to write Label 
+DateTime sNow = DateTime.Now;
+String fileName = "C:\\S1C\\Labels\\" + sNow.ToString("yMMdd_HHmmss") + ".pdf";
+System.IO.FileStream fileStream = new FileStream(@fileName, FileMode.CreateNew);
+System.IO.BinaryWriter writer = new BinaryWriter(fileStream);
+
+var objPackage = deserializedJSON.data.packages;
+byte[] responseLabel = Convert.FromBase64String((string)objPackage[0].label);
+writer.Write(responseLabel, 0, responseLabel.Length);
+
+writer.Close();
+
+// Update Delivery with Tracking Number and Refresh Form
+oDLN.TrackingNumber = objPackage[0].tracking_number;
+oDLN.Update();
+application.ActivateMenuItem("1304");

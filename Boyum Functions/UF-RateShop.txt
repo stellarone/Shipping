@@ -1,0 +1,264 @@
+string DataSource;
+string DataSourceAddr;
+// SAPbouiCOM.Form UdfForm;
+if(form.TypeEx == "139")
+{
+    DataSource = "ORDR";
+    DataSourceAddr = "RDR12";
+    application.MessageBox("Setting uDF Form");
+    // UdfForm = application.Forms.GetForm("-139", 0);
+}
+else
+{
+    DataSource = "OQUT";
+    DataSourceAddr = "QUT12";
+    // UdfForm = application.Forms.GetForm("-139", 0);
+}
+application.MessageBox("Form Set");
+// Close form if it already exists. 
+try
+{
+    SAPbouiCOM.Form oForm = null;
+    oForm = application.Forms.Item("CFL1");
+    oForm.Close();
+}
+catch
+{
+    // Continue Processing Normally - No form to close prior to continuing 
+}
+
+SAPbouiCOM.DBDataSource HeaderDB;
+SAPbouiCOM.DBDataSource AddrDB;
+HeaderDB = form.DataSources.DBDataSources.Item(DataSource);
+AddrDB = form.DataSources.DBDataSources.Item(DataSourceAddr);
+
+string weight = HeaderDB.GetValue("Weight",0);
+string name = HeaderDB.GetValue("ShipToCode",0);
+string addr1 = AddrDB.GetValue("StreetS", 0);
+string addr2 = AddrDB.GetValue("BlockS", 0);
+string city = AddrDB.GetValue("CityS", 0);
+string state = AddrDB.GetValue("StateS", 0);
+string zip = AddrDB.GetValue("ZipCodeS", 0);
+
+var JSON = "{";
+//Destination Information; 
+JSON += "\"weight\": " + "\"" + weight + "\"";
+JSON += ",\"to_name\": " + "\"" + name + "\"";
+JSON += ",\"to_addr1\": " + "\"" + addr1 + "\"";
+if (addr2 != "")
+{
+    JSON += ",\"to_addr2\": \"" + addr2 + "\"";
+}
+JSON += ",\"to_city\": " + "\"" + city + "\"";
+JSON += ",\"to_state\": " + "\"" + state + "\"";
+JSON += ",\"to_code\": " + "\"" + zip + "\"";
+JSON += ",\"to_country\": \"US\"";
+JSON += "}";
+
+var request = (HttpWebRequest)WebRequest.Create("https://fztrpj78x1.execute-api.us-west-1.amazonaws.com/V1/shipping");
+request.Method = "POST";
+request.PreAuthenticate = true;
+request.KeepAlive = true;
+request.ContentType = "application/json";
+request.ContentLength = JSON.Length;
+
+using (var streamWriter = new StreamWriter(request.GetRequestStream()))
+{
+    streamWriter.Write(JSON);
+}
+
+var response = (HttpWebResponse)request.GetResponse();
+var responseString = new StreamReader(response.GetResponseStream()).ReadToEnd();
+
+dynamic deserializedJSON = JsonConvert.DeserializeObject(responseString);
+string body = deserializedJSON.body;
+dynamic arrBody = JsonConvert.DeserializeObject(body);
+
+SAPbobsCOM.UserTable oUT = null;
+oUT = company.UserTables.Item("S1C_SHIP_STAGE");
+double calcRate = 0; 
+
+
+/*
+for (int i = 0; i < (arrBody.Count); i++)
+{
+    oUT.Code = i.ToString() + "-Code";
+    oUT.Name = i.ToString() + "-Name";
+
+    if(Convert.ToString(UdfForm.Items.Item("U_S1C_Shp_NegOrPub")) == "Negotiated Rate")
+    {
+        calcRate = arrBody[i].negotiated_rate;  
+        if( (Convert.ToDecimal(UdfForm.Items.Item("U_S1C_Shp_MarkupAmt")) > 0 || Convert.ToDecimal(UdfForm.Items.Item("U_S1C_Shp_MarkupAmt")) < 0 ) && (Convert.ToString(UdfForm.Items.Item("U_S1C_Shp_MarkupType")) == "Amount" ) )
+        {
+            application.MessageBox("Markup Added");
+            calcRate = calcRate +  Convert.ToDouble(form.Items.Item("U_S1C_Shp_MarkupAmt"));  
+        }
+        else if ( (Convert.ToDecimal(UdfForm.Items.Item("U_S1C_Shp_MarkupAmt")) > 0 || Convert.ToDecimal(UdfForm.Items.Item("U_S1C_Shp_MarkupAmt")) < 0 ) && (Convert.ToString(UdfForm.Items.Item("U_S1C_Shp_MarkupType")) == "Percent" ) )
+        {
+            application.MessageBox("Markup Added");
+            calcRate += calcRate * Convert.ToDouble(UdfForm.Items.Item("U_S1C_Shp_MarkupAmt")); 
+        }
+        else
+        {
+            application.MessageBox("No Markup");
+        }
+    }
+    else
+    {
+        calcRate = arrBody[i].rate;  
+        if( (Convert.ToDecimal(UdfForm.Items.Item("U_S1C_Shp_MarkupAmt")) > 0 || Convert.ToDecimal(UdfForm.Items.Item("U_S1C_Shp_MarkupAmt")) < 0 ) && (Convert.ToString(UdfForm.Items.Item("U_S1C_Shp_MarkupType")) == "Amount" ) )
+        {
+            application.MessageBox("Markup Added");
+            calcRate = calcRate +  Convert.ToDouble(form.Items.Item("U_S1C_Shp_MarkupAmt"));  
+        }
+        else if ( (Convert.ToDecimal(UdfForm.Items.Item("U_S1C_Shp_MarkupAmt")) > 0 || Convert.ToDecimal(UdfForm.Items.Item("U_S1C_Shp_MarkupAmt")) < 0 ) && (Convert.ToString(UdfForm.Items.Item("U_S1C_Shp_MarkupType")) == "Percent" ) )
+        {
+            application.MessageBox("Markup Added");
+            calcRate += calcRate *  Convert.ToDouble(UdfForm.Items.Item("U_S1C_Shp_MarkupAmt")); 
+        }
+        else
+        {
+            application.MessageBox("No Markup");
+        }
+    }
+    
+    oUT.UserFields.Fields.Item("U_service_code").Value = arrBody[i].service_code;
+    oUT.UserFields.Fields.Item("U_desc").Value = arrBody[i].desc;
+    oUT.UserFields.Fields.Item("U_rate").Value = calcRate;
+    // oUT.UserFields.Fields.Item("U_neg_rate").Value = (float)arrBody[i].negotiated_rate;
+    oUT.UserFields.Fields.Item("U_time").Value = (string)arrBody[i].est_delivery_time;
+    oUT.UserFields.Fields.Item("U_base_form").Value = (string)form.TypeEx;
+    oUT.UserFields.Fields.Item("U_base_entry").Value = HeaderDB.GetValue("DocEntry",0);
+    oUT.UserFields.Fields.Item("U_user").Value = company.UserName;
+
+    if (oUT.Add() != 0)
+    {
+        application.MessageBox("Failed to stage data");
+    }
+}*/
+
+for (int i = 0; i < (arrBody.Count); i++)
+{
+    oUT.Code = i.ToString() + "-Code";
+    oUT.Name = i.ToString() + "-Name";
+
+    if((HeaderDB.GetValue("U_S1C_Shp_NegOrPub", 0)) == "Negotiated Rate")
+    {
+        calcRate = arrBody[i].negotiated_rate;  
+        if((Convert.ToDouble(HeaderDB.GetValue("U_S1C_Shp_MarkupAmt", 0)) > 0 || Convert.ToDouble(HeaderDB.GetValue("U_S1C_Shp_MarkupAmt", 0)) < 0 ) && ((HeaderDB.GetValue("U_S1C_Shp_MarkupType", 0)) == "Amount" ) )
+        {
+            application.MessageBox("Markup Added");
+            calcRate = calcRate + Convert.ToDouble(HeaderDB.GetValue("U_S1C_Shp_MarkupAmt", 0));  
+        }
+        else if ( (Convert.ToDouble(HeaderDB.GetValue("U_S1C_Shp_MarkupAmt", 0)) > 0 || Convert.ToDouble(HeaderDB.GetValue("U_S1C_Shp_MarkupAmt", 0)) < 0 ) && ((HeaderDB.GetValue("U_S1C_Shp_MarkupType", 0)) == "Percent" ) )
+        {
+            application.MessageBox("Markup Added");
+            calcRate += calcRate * (Convert.ToDouble(HeaderDB.GetValue("U_S1C_Shp_MarkupAmt" , 0)) / 100); 
+        }
+        else
+        {
+            application.MessageBox("No Markup");
+        }
+    }
+    else
+    {
+        calcRate = arrBody[i].rate;  
+        if( (  Convert.ToDouble(HeaderDB.GetValue("U_S1C_Shp_MarkupAmt", 0)) > 0 || Convert.ToDouble(HeaderDB.GetValue("U_S1C_Shp_MarkupAmt", 0)) < 0 ) && ((HeaderDB.GetValue("U_S1C_Shp_MarkupType", 0)) == "Amount" ) )
+        {
+            application.MessageBox("Markup Added");
+            calcRate = calcRate +  Convert.ToDouble(HeaderDB.GetValue("U_S1C_Shp_MarkupAmt", 0));  
+        }
+        else if ( (Convert.ToDouble(HeaderDB.GetValue("U_S1C_Shp_MarkupAmt", 0)) > 0 || Convert.ToDouble(HeaderDB.GetValue("U_S1C_Shp_MarkupAmt", 0)) < 0 ) && ((HeaderDB.GetValue("U_S1C_Shp_MarkupType", 0)) == "Percent" ) )
+        {
+            application.MessageBox("Markup Added");
+            calcRate += calcRate * Convert.ToDouble(HeaderDB.GetValue("U_S1C_Shp_MarkupAmt", 0)) / 100; 
+        }
+        else
+        {
+            application.MessageBox("No Markup");
+        }
+    }
+    
+    oUT.UserFields.Fields.Item("U_service_code").Value = arrBody[i].service_code;
+    oUT.UserFields.Fields.Item("U_desc").Value = arrBody[i].desc;
+    oUT.UserFields.Fields.Item("U_rate").Value = calcRate;
+    // oUT.UserFields.Fields.Item("U_neg_rate").Value = (float)arrBody[i].negotiated_rate;
+    oUT.UserFields.Fields.Item("U_time").Value = (string)arrBody[i].est_delivery_time;
+    oUT.UserFields.Fields.Item("U_base_form").Value = (string)form.TypeEx;
+    oUT.UserFields.Fields.Item("U_base_entry").Value = HeaderDB.GetValue("DocEntry",0);
+    oUT.UserFields.Fields.Item("U_user").Value = company.UserName;
+
+    if (oUT.Add() != 0)
+    {
+        application.MessageBox("Failed to stage data");
+    }
+}
+
+SAPbouiCOM.FormCreationParams oCP = null; 
+SAPbouiCOM.Item oItem = null; 
+SAPbouiCOM.Button oButton = null; 
+SAPbouiCOM.Grid oGrid = null;
+SAPbouiCOM.GridColumn oCol = null;
+      
+
+//  Setting the form creation params
+oCP = ( ( SAPbouiCOM.FormCreationParams )( application.CreateObject( SAPbouiCOM.BoCreatableObjectType.cot_FormCreationParams ) ) ); 
+oCP.UniqueID = "CFL1"; 
+oCP.FormType = "CFL1"; 
+oCP.BorderStyle = SAPbouiCOM.BoFormBorderStyle.fbs_Sizable;
+                        
+//  Adding the form
+form = application.Forms.AddEx( oCP ); 
+form.Title = "Choose Shipping Type";
+
+// Adding a Grid - ShippingTypes:
+oItem = form.Items.Add("Types", SAPbouiCOM.BoFormItemTypes.it_GRID);
+oItem.Left = 10;
+oItem.Top = 10;
+oItem.Width = 490;
+oItem.Height = 250;
+oGrid = ((SAPbouiCOM.Grid)(oItem.Specific));
+
+//  Adding a Data Source
+form.DataSources.DataTables.Add("TypeSource");
+string sql = @"SELECT ""U_desc"" as ""Type"", ""U_rate"" as ""Calculated Rate"", ""U_time"" as ""Estimated Delivery"" , ""U_base_form"", ""U_base_entry"", ""U_code""
+            From ""@S1C_SHIP_STAGE"" Where ""U_user"" = '" + company.UserName + "'";
+form.DataSources.DataTables.Item(0).ExecuteQuery(sql);
+oGrid.DataTable = form.DataSources.DataTables.Item("TypeSource");
+oGrid.SelectionMode = SAPbouiCOM.BoMatrixSelect.ms_Single;
+
+//  Clean UDT
+SAPbobsCOM.Recordset RecSet = null;
+RecSet = company.GetBusinessObject(BoRecordset);
+RecSet.DoQuery("DELETE FROM \"@S1C_SHIP_STAGE\" WHERE \"U_user\" = '" + company.UserName + "'");
+
+//  Make Grid uneditable
+oCol = oGrid.Columns.Item(0);
+oCol.Editable = false;
+oCol = oGrid.Columns.Item(1);
+oCol.Editable = false;
+oCol = oGrid.Columns.Item(2);
+oCol.Editable = false;
+
+// Set base info not visible: form (3) |  Entry (4)  |  Shipping Type Code (5)
+oCol = oGrid.Columns.Item(3);
+oCol.Visible = false;
+oCol = oGrid.Columns.Item(4);
+oCol.Visible = false;
+oCol = oGrid.Columns.Item(5);
+oCol.Visible = false;
+
+//  Adding a CFL button
+oItem = form.Items.Add( "Button", SAPbouiCOM.BoFormItemTypes.it_BUTTON ); 
+oItem.Left = 155; 
+oItem.Top = 278; 
+oButton = ( ( SAPbouiCOM.Button )( oItem.Specific ) ); 
+oButton.Type = SAPbouiCOM.BoButtonTypes.bt_Caption;
+oItem.FontSize = 13;
+oItem.Width = 98; 
+oItem.Height = 29;
+oButton.Caption = "Select";
+            
+form.Width = 560; 
+form.Height = 420; 
+form.Visible = true;
